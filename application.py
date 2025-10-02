@@ -8,17 +8,19 @@ from langchain_pinecone import PineconeVectorStore
 from src.helper import download_embeddings
 import os
 from dotenv import load_dotenv
-from src.prompt import system_prompt # Assuming system_prompt is in src/prompt.py
+from src.prompt import system_prompt
 
 # Initialize Flask app
-# If deploying to Elastic Beanstalk, it's better to name this 'application'
-# For local testing or Render, 'app' is fine.
 application = Flask(__name__)
 
 # Load environment variables
 load_dotenv()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+# Validate environment variables
+if not PINECONE_API_KEY or not GROQ_API_KEY:
+    raise ValueError("Missing required environment variables. Please check your .env file.")
 
 os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
@@ -35,12 +37,10 @@ docsearch = PineconeVectorStore.from_existing_index(
     embedding=embeddings
 )
 
-# Initialize the LLM with a slightly more creative temperature
+# Initialize the LLM
 llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
 
-# 1. Create a History-Aware Retriever Chain
-# This prompt helps the LLM rephrase the user's question to be a standalone question
-# based on the chat history.
+# Create a History-Aware Retriever Chain
 contextualize_q_system_prompt = (
     "Given a chat history and the latest user question "
     "which might reference context in the chat history, "
@@ -57,27 +57,22 @@ contextualize_q_prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-# Create the retriever that considers history
 history_aware_retriever = create_history_aware_retriever(
     llm, docsearch.as_retriever(), contextualize_q_prompt
 )
 
-
-# 2. Create the Final Answering Chain
-# This is the prompt for the final answer generation, using your original system_prompt
+# Create the Final Answering Chain
 qa_prompt = ChatPromptTemplate.from_messages(
     [
-        ("system", system_prompt), # Using your imported system_prompt
+        ("system", system_prompt),
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
     ]
 )
 
-# This chain takes the question and retrieved documents and generates an answer
 question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 
-
-# 3. Combine them into the final RAG chain
+# Combine them into the final RAG chain
 rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
 
@@ -89,27 +84,32 @@ def index():
 
 @application.route("/get", methods=["POST"])
 def chat():
-    # Get the user's message and the chat history from the form data
-    msg = request.form.get("msg")
-    history_list = request.form.getlist('history[]')
-    
-    if not msg:
-        return "Error: No message received", 400
+    try:
+        # Get the user's message and the chat history
+        msg = request.form.get("msg")
+        history_list = request.form.getlist('history[]')
+        
+        if not msg:
+            return "Error: No message received", 400
 
-    # Recreate the chat_history object from the flat list sent by the frontend
-    chat_history = []
-    for i in range(0, len(history_list), 2):
-        if i+1 < len(history_list):
-            chat_history.append(HumanMessage(content=history_list[i]))
-            chat_history.append(AIMessage(content=history_list[i+1]))
+        # Recreate the chat_history object
+        chat_history = []
+        for i in range(0, len(history_list), 2):
+            if i+1 < len(history_list):
+                chat_history.append(HumanMessage(content=history_list[i]))
+                chat_history.append(AIMessage(content=history_list[i+1]))
 
-    # Invoke the RAG chain with the new input and history
-    response = rag_chain.invoke({"input": msg, "chat_history": chat_history})
+        # Invoke the RAG chain
+        response = rag_chain.invoke({"input": msg, "chat_history": chat_history})
+        
+        answer = response.get("answer", "Sorry, I couldn't find an answer.")
+        return str(answer)
     
-    answer = response.get("answer", "Sorry, I couldn't find an answer.")
-    print("Response:", answer)
-    return str(answer)
+    except Exception as e:
+        print(f"Error in chat endpoint: {str(e)}")
+        return "Sorry, an error occurred. Please try again.", 500
 
 
 if __name__ == '__main__':
-    application.run(host="0.0.0.0", port=8080, debug=True)
+    port = int(os.environ.get('PORT', 8080))
+    application.run(host="0.0.0.0", port=port, debug=False)
