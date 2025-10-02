@@ -74,6 +74,9 @@
         const userInput = document.getElementById('userInput');
         const sendBtn = document.getElementById('sendBtn');
 
+        // This array will store the conversation history
+        let chatHistory = [];
+
         // Event listeners
         sendBtn.addEventListener('click', sendMessage);
         userInput.addEventListener('keypress', (e) => {
@@ -82,7 +85,6 @@
             }
         });
 
-        // Send message function
         function sendMessage() {
             const message = userInput.value.trim();
             if (message === '') return;
@@ -92,42 +94,48 @@
                 welcomeMsg.remove();
             }
 
-            // 1. Add user's message to the UI
+            // Add user's message to the UI and history
             addMessage(message, 'user');
+            chatHistory.push(message);
             userInput.value = '';
 
-            // 2. Show a temporary "thinking" message from the bot
+            // Show a temporary "thinking" message from the bot
             addMessage('Thinking...', 'bot');
 
-            // 3. Use the Fetch API to send the message to the Flask backend
+            // --- Updated Fetch Request to send history ---
+            const formData = new FormData();
+            formData.append('msg', message);
+            
+            // Add the entire chat history to the form data
+            chatHistory.forEach((entry) => {
+                formData.append('history[]', entry);
+            });
+
             fetch('/get', {
                 method: 'POST',
-                body: new URLSearchParams({ msg: message }), // Send message as form data
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
+                body: formData, // Send form data which can handle arrays
             })
-            .then(response => response.text()) // Get the response as text
+            .then(response => response.text())
             .then(data => {
-                // 4. Remove the "Thinking..." message
                 const thinkingMessage = chatContainer.lastChild;
-                if (thinkingMessage && thinkingMessage.querySelector('.message-bubble').textContent === 'Thinking...') {
+                if (thinkingMessage && thinkingMessage.querySelector('.message-bubble').innerText.startsWith('Thinking...')) {
                     thinkingMessage.remove();
                 }
-                // 5. Add the real bot response from the server
+
+                // Add the real bot response to the UI and history
                 addMessage(data, 'bot');
+                chatHistory.push(data); // Add bot's response to history
             })
             .catch((error) => {
                 console.error('Error:', error);
                 const thinkingMessage = chatContainer.lastChild;
-                if (thinkingMessage && thinkingMessage.querySelector('.message-bubble').textContent === 'Thinking...') {
+                if (thinkingMessage && thinkingMessage.querySelector('.message-bubble').innerText.startsWith('Thinking...')) {
                     thinkingMessage.remove();
                 }
                 addMessage('Sorry, something went wrong. Please try again.', 'bot');
             });
         }
 
-        // Add message to chat UI
         function addMessage(text, sender) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}-message`;
@@ -148,7 +156,7 @@
 
             const bubble = document.createElement('div');
             bubble.className = 'message-bubble';
-            bubble.textContent = text;
+            bubble.innerText = text; // Use innerText to correctly display newlines and prevent HTML injection
 
             const time = document.createElement('span');
             time.className = 'message-time';
