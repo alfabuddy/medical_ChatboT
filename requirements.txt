@@ -1,10 +1,10 @@
 langchain==0.3.26
-flask==3.1.0
-sentence-transformers==4.1.0
-pypdf==5.6.1
-python-dotenv==1.1.0
-langchain-pinecone==0.2.8
-langchain-groq==0.2.11
-langchain-community==0.3.26
-pinecone-client==5.0.1
-gunicorn==21.2.0
+   flask==3.1.0
+   sentence-transformers==4.1.0
+   pypdf==5.6.1
+   python-dotenv==1.1.0
+   langchain-pinecone==0.2.8
+   langchain-groq==0.3.8
+   langchain-community==0.3.26
+   pinecone-client==5.0.1
+   gunicorn==21.2.0
