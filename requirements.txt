@@ -6,5 +6,5 @@ python-dotenv==1.1.0
 langchain-pinecone==0.2.8
 langchain-groq==0.3.8
 langchain-community==0.3.26
-pinecone==5.4.2
+pinecone-client==3.2.2
 gunicorn==21.2.0
